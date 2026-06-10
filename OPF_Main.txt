@@ -1,13 +1,16 @@
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local VirtualInputManager = game:GetService("VirtualInputManager")
+local RunService = game:GetService("RunService")
 local LocalPlayer = Players.LocalPlayer
 
 local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
 local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
 local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
 
--- State
+-- ==========================================
+-- STATE: AUTO COMBO & TP
+-- ==========================================
 _G.AutoZEnabled = false
 _G.AutoXEnabled = false
 _G.AutoCEnabled = false
@@ -29,10 +32,22 @@ local delayOther = 0.1
 local ActiveMonsterTarget = nil
 local ActiveMonsterType = nil
 
--- Window
+-- ==========================================
+-- STATE: CHEST TELEPORTER
+-- ==========================================
+_G.AutoChestEnabled = false
+local chestsFolder = workspace.Chests
+local chestIndex = 1
+local chestTpDelay = 0.15
+local lastChestTpTime = 0
+local chestWaitingForRespawn = false
+
+-- ==========================================
+-- WINDOW & TABS
+-- ==========================================
 local Window = Fluent:CreateWindow({
-    Title = "Ultimate Combo & Kill Lock",
-    SubTitle = "by cook45",
+    Title = "Homunculus Hub",
+    SubTitle = "by Fiath3r",
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
@@ -41,9 +56,10 @@ local Window = Fluent:CreateWindow({
 })
 
 local Tabs = {
-    Combo    = Window:AddTab({ Title = "Auto Combo", Icon = "zap" }),
+    Combo    = Window:AddTab({ Title = "Auto Skill", Icon = "zap" }),
     Spawn    = Window:AddTab({ Title = "Auto Spawn", Icon = "refresh-cw" }),
-    TP       = Window:AddTab({ Title = "Auto TP", Icon = "crosshair" }),
+    TP       = Window:AddTab({ Title = "Auto Farm", Icon = "crosshair" }),
+    Chest    = Window:AddTab({ Title = "Auto Chest", Icon = "box" }),
     Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
 }
 
@@ -124,7 +140,7 @@ Tabs.Spawn:AddToggle("AutoSpawnEnabled", {
 })
 
 -- ==========================================
--- TAB 3: AUTO TP
+-- TAB 3: AUTO TP (MONSTERS)
 -- ==========================================
 Tabs.TP:AddParagraph({
     Title = "Auto Teleport to Monster",
@@ -219,7 +235,32 @@ Tabs.TP:AddSlider("DistOpt3", {
 })
 
 -- ==========================================
--- Settings tab (SaveManager / InterfaceManager)
+-- TAB 4: AUTO CHEST
+-- ==========================================
+Tabs.Chest:AddParagraph({
+    Title = "Auto Chest Teleporter",
+    Content = "TP ไปเก็บกล่องอัตโนมัติทีละกล่องจนหมด\nเมื่อไม่มีกล่องจะรอสักครู่จนกล่องเกิดใหม่"
+})
+
+Tabs.Chest:AddToggle("AutoChestEnabled", {
+    Title = "AUTO CHEST TP",
+    Description = "เปิด/ปิดการเก็บกล่องอัตโนมัติ",
+    Default = false,
+    Callback = function(v) _G.AutoChestEnabled = v end
+})
+
+Tabs.Chest:AddSlider("ChestTpDelay", {
+    Title = "Chest TP Delay (seconds)",
+    Description = "ดีเลย์ระหว่างการ TP",
+    Default = 0.15,
+    Min = 0.05,
+    Max = 2,
+    Rounding = 2,
+    Callback = function(v) chestTpDelay = v end
+})
+
+-- ==========================================
+-- SETTINGS TAB
 -- ==========================================
 SaveManager:SetLibrary(Fluent)
 InterfaceManager:SetLibrary(Fluent)
@@ -241,8 +282,9 @@ Fluent:Notify({
 SaveManager:LoadAutoloadConfig()
 
 -- ==========================================
--- LOGIC (ไม่แตะ)
+-- FUNCTIONS
 -- ==========================================
+
 local function simulateKeyPress(keyCode)
     VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
     task.wait(0.02)
@@ -301,7 +343,20 @@ local function ClickSpawnButton()
     end
 end
 
--- Loops
+local function getActiveChests()
+    local active = {}
+    if not chestsFolder then return active end
+    for _, chest in ipairs(chestsFolder:GetChildren()) do
+        if chest:IsA("Model") or chest:IsA("BasePart") then
+            table.insert(active, chest)
+        end
+    end
+    return active
+end
+
+-- ==========================================
+-- LOOPS: AUTO COMBO Z
+-- ==========================================
 task.spawn(function()
     while true do
         if _G.AutoZEnabled then
@@ -313,6 +368,9 @@ task.spawn(function()
     end
 end)
 
+-- ==========================================
+-- LOOPS: AUTO COMBO X,C,V,B
+-- ==========================================
 task.spawn(function()
     while true do
         if _G.AutoXEnabled or _G.AutoCEnabled or _G.AutoVEnabled or _G.AutoBEnabled then
@@ -327,6 +385,9 @@ task.spawn(function()
     end
 end)
 
+-- ==========================================
+-- LOOPS: AUTO SPAWN
+-- ==========================================
 task.spawn(function()
     while true do
         if _G.AutoSpawnEnabled then
@@ -344,6 +405,9 @@ task.spawn(function()
     end
 end)
 
+-- ==========================================
+-- LOOPS: AUTO TP MONSTERS
+-- ==========================================
 task.spawn(function()
     while true do
         if _G.AutoTP_CaveDemon or _G.AutoTP_Thief or _G.AutoTP_Vokun then
@@ -402,6 +466,58 @@ task.spawn(function()
         else
             ActiveMonsterTarget = nil
             ActiveMonsterType = nil
+            task.wait(0.5)
+        end
+    end
+end)
+
+-- ==========================================
+-- LOOPS: AUTO CHEST TELEPORTER
+-- ==========================================
+task.spawn(function()
+    while true do
+        if _G.AutoChestEnabled then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                if myRoot then
+                    local activeChests = getActiveChests()
+                    
+                    if #activeChests == 0 then
+                        chestWaitingForRespawn = true
+                        task.wait(1)
+                        return
+                    end
+                    
+                    if chestWaitingForRespawn then
+                        chestWaitingForRespawn = false
+                        chestIndex = 1
+                    end
+                    
+                    local currentTime = tick()
+                    
+                    if currentTime - lastChestTpTime >= chestTpDelay then
+                        if chestIndex <= #activeChests then
+                            local chest = activeChests[chestIndex]
+                            
+                            if chest then
+                                myRoot.CFrame = chest.CFrame
+                                chestIndex = chestIndex + 1
+                                lastChestTpTime = currentTime
+                            else
+                                chestIndex = chestIndex + 1
+                            end
+                        else
+                            chestIndex = 1
+                            chestWaitingForRespawn = true
+                        end
+                    end
+                end
+            end)
+            task.wait(0.05)
+        else
+            chestIndex = 1
+            chestWaitingForRespawn = false
             task.wait(0.5)
         end
     end
