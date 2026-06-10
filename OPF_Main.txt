@@ -1,0 +1,408 @@
+local Players = game:GetService("Players")
+local UserInputService = game:GetService("UserInputService")
+local VirtualInputManager = game:GetService("VirtualInputManager")
+local LocalPlayer = Players.LocalPlayer
+
+local Fluent = loadstring(game:HttpGet("https://github.com/dawid-scripts/Fluent/releases/latest/download/main.lua"))()
+local SaveManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/SaveManager.lua"))()
+local InterfaceManager = loadstring(game:HttpGet("https://raw.githubusercontent.com/dawid-scripts/Fluent/master/Addons/InterfaceManager.lua"))()
+
+-- State
+_G.AutoZEnabled = false
+_G.AutoXEnabled = false
+_G.AutoCEnabled = false
+_G.AutoVEnabled = false
+_G.AutoBEnabled = false
+_G.AutoSpawnEnabled = false
+_G.AutoTP_CaveDemon = false
+_G.AutoTP_Thief = false
+_G.AutoTP_Vokun = false
+_G.DirOpt1 = "Above"
+_G.DirOpt2 = "Above"
+_G.DirOpt3 = "Above"
+_G.DistOpt1 = 5
+_G.DistOpt2 = 5
+_G.DistOpt3 = 5
+
+local delayZ = 0.1
+local delayOther = 0.1
+local ActiveMonsterTarget = nil
+local ActiveMonsterType = nil
+
+-- Window
+local Window = Fluent:CreateWindow({
+    Title = "Ultimate Combo & Kill Lock",
+    SubTitle = "by cook45",
+    TabWidth = 160,
+    Size = UDim2.fromOffset(580, 460),
+    Acrylic = true,
+    Theme = "Dark",
+    MinimizeKey = Enum.KeyCode.LeftControl
+})
+
+local Tabs = {
+    Combo    = Window:AddTab({ Title = "Auto Combo", Icon = "zap" }),
+    Spawn    = Window:AddTab({ Title = "Auto Spawn", Icon = "refresh-cw" }),
+    TP       = Window:AddTab({ Title = "Auto TP", Icon = "crosshair" }),
+    Settings = Window:AddTab({ Title = "Settings", Icon = "settings" })
+}
+
+local Options = Fluent.Options
+
+-- ==========================================
+-- TAB 1: AUTO COMBO
+-- ==========================================
+Tabs.Combo:AddParagraph({
+    Title = "Auto Key Press",
+    Content = "กดสกิลอัตโนมัติตาม Delay ที่กำหนด"
+})
+
+Tabs.Combo:AddToggle("AutoZEnabled", {
+    Title = "AUTO Z",
+    Description = "กด Z อัตโนมัติ",
+    Default = false,
+    Callback = function(v) _G.AutoZEnabled = v end
+})
+
+Tabs.Combo:AddSlider("DelayZ", {
+    Title = "Z Delay (seconds)",
+    Description = "ดีเลย์ปุ่ม Z",
+    Default = 0.1,
+    Min = 0.01,
+    Max = 2,
+    Rounding = 2,
+    Callback = function(v) delayZ = v end
+})
+
+Tabs.Combo:AddToggle("AutoXEnabled", {
+    Title = "AUTO X",
+    Default = false,
+    Callback = function(v) _G.AutoXEnabled = v end
+})
+
+Tabs.Combo:AddToggle("AutoCEnabled", {
+    Title = "AUTO C",
+    Default = false,
+    Callback = function(v) _G.AutoCEnabled = v end
+})
+
+Tabs.Combo:AddToggle("AutoVEnabled", {
+    Title = "AUTO V",
+    Default = false,
+    Callback = function(v) _G.AutoVEnabled = v end
+})
+
+Tabs.Combo:AddToggle("AutoBEnabled", {
+    Title = "AUTO B",
+    Default = false,
+    Callback = function(v) _G.AutoBEnabled = v end
+})
+
+Tabs.Combo:AddSlider("DelayOther", {
+    Title = "X,C,V,B Delay (seconds)",
+    Description = "ดีเลย์ปุ่ม X C V B",
+    Default = 0.1,
+    Min = 0.01,
+    Max = 2,
+    Rounding = 2,
+    Callback = function(v) delayOther = v end
+})
+
+-- ==========================================
+-- TAB 2: AUTO SPAWN
+-- ==========================================
+Tabs.Spawn:AddParagraph({
+    Title = "Auto Spawn / Respawn",
+    Content = "กด Spawn/Respawn อัตโนมัติเมื่อตาย"
+})
+
+Tabs.Spawn:AddToggle("AutoSpawnEnabled", {
+    Title = "AUTO SPAWN",
+    Description = "กดปุ่ม Spawn/Respawn อัตโนมัติ",
+    Default = false,
+    Callback = function(v) _G.AutoSpawnEnabled = v end
+})
+
+-- ==========================================
+-- TAB 3: AUTO TP
+-- ==========================================
+Tabs.TP:AddParagraph({
+    Title = "Auto Teleport to Monster",
+    Content = "TP ติดมอนสเตอร์อัตโนมัติ ล็อคคิวทีละตัวจนตาย\nเลือก Direction และ Distance สำหรับแต่ละ Option"
+})
+
+-- OPT 1: Cave Demon
+Tabs.TP:AddToggle("AutoTP_CaveDemon", {
+    Title = "OPT 1: Cave Demon",
+    Default = false,
+    Callback = function(v)
+        _G.AutoTP_CaveDemon = v
+        if not v and ActiveMonsterType == 1 then
+            ActiveMonsterTarget = nil
+            ActiveMonsterType = nil
+        end
+    end
+})
+
+Tabs.TP:AddDropdown("DirOpt1", {
+    Title = "Cave Demon – Direction",
+    Values = {"Above", "Below", "Front", "Back"},
+    Default = "Above",
+    Callback = function(v) _G.DirOpt1 = v end
+})
+
+Tabs.TP:AddSlider("DistOpt1", {
+    Title = "Cave Demon – Distance",
+    Default = 5,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v) _G.DistOpt1 = v end
+})
+
+-- OPT 2: Thief Mobs
+Tabs.TP:AddToggle("AutoTP_Thief", {
+    Title = "OPT 2: Thief Mobs",
+    Default = false,
+    Callback = function(v)
+        _G.AutoTP_Thief = v
+        if not v and ActiveMonsterType == 2 then
+            ActiveMonsterTarget = nil
+            ActiveMonsterType = nil
+        end
+    end
+})
+
+Tabs.TP:AddDropdown("DirOpt2", {
+    Title = "Thief Mobs – Direction",
+    Values = {"Above", "Below", "Front", "Back"},
+    Default = "Above",
+    Callback = function(v) _G.DirOpt2 = v end
+})
+
+Tabs.TP:AddSlider("DistOpt2", {
+    Title = "Thief Mobs – Distance",
+    Default = 5,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v) _G.DistOpt2 = v end
+})
+
+-- OPT 3: Vokun Boss
+Tabs.TP:AddToggle("AutoTP_Vokun", {
+    Title = "OPT 3: Vokun Boss",
+    Default = false,
+    Callback = function(v)
+        _G.AutoTP_Vokun = v
+        if not v and ActiveMonsterType == 3 then
+            ActiveMonsterTarget = nil
+            ActiveMonsterType = nil
+        end
+    end
+})
+
+Tabs.TP:AddDropdown("DirOpt3", {
+    Title = "Vokun Boss – Direction",
+    Values = {"Above", "Below", "Front", "Back"},
+    Default = "Above",
+    Callback = function(v) _G.DirOpt3 = v end
+})
+
+Tabs.TP:AddSlider("DistOpt3", {
+    Title = "Vokun Boss – Distance",
+    Default = 5,
+    Min = 0,
+    Max = 100,
+    Rounding = 0,
+    Callback = function(v) _G.DistOpt3 = v end
+})
+
+-- ==========================================
+-- Settings tab (SaveManager / InterfaceManager)
+-- ==========================================
+SaveManager:SetLibrary(Fluent)
+InterfaceManager:SetLibrary(Fluent)
+SaveManager:IgnoreThemeSettings()
+SaveManager:SetIgnoreIndexes({})
+InterfaceManager:SetFolder("UltimateKillLock")
+SaveManager:SetFolder("UltimateKillLock/config")
+InterfaceManager:BuildInterfaceSection(Tabs.Settings)
+SaveManager:BuildConfigSection(Tabs.Settings)
+
+Window:SelectTab(1)
+
+Fluent:Notify({
+    Title = "Ultimate Kill Lock",
+    Content = "Script loaded successfully.",
+    Duration = 5
+})
+
+SaveManager:LoadAutoloadConfig()
+
+-- ==========================================
+-- LOGIC (ไม่แตะ)
+-- ==========================================
+local function simulateKeyPress(keyCode)
+    VirtualInputManager:SendKeyEvent(true, keyCode, false, game)
+    task.wait(0.02)
+    VirtualInputManager:SendKeyEvent(false, keyCode, false, game)
+end
+
+local function CheckValidTarget(obj)
+    if obj and obj.Parent and obj:IsDescendantOf(workspace) then
+        local h = obj:FindFirstChildOfClass("Humanoid")
+        if h and h.Health > 0 then return true end
+    end
+    return false
+end
+
+local function FindTargetFromWorkspace(keyword)
+    for _, v in pairs(workspace:GetChildren()) do
+        if v:IsA("Model") and string.find(v.Name, keyword) then
+            local h = v:FindFirstChildOfClass("Humanoid")
+            if h and h.Health > 0 then return v end
+        end
+    end
+    for _, folder in pairs(workspace:GetChildren()) do
+        if folder:IsA("Folder") or folder:IsA("Model") then
+            for _, v in pairs(folder:GetChildren()) do
+                if v:IsA("Model") and string.find(v.Name, keyword) then
+                    local h = v:FindFirstChildOfClass("Humanoid")
+                    if h and h.Health > 0 then return v end
+                end
+            end
+        end
+    end
+    return nil
+end
+
+local function ClickSpawnButton()
+    local playerGui = LocalPlayer:FindFirstChildOfClass("PlayerGui")
+    if not playerGui then return end
+    for _, gui in pairs(playerGui:GetDescendants()) do
+        if gui:IsA("TextButton") or gui:IsA("ImageButton") then
+            local nl = string.lower(gui.Name)
+            local tl = gui:IsA("TextButton") and string.lower(gui.Text) or ""
+            if (string.find(nl,"spawn") or string.find(tl,"spawn") or
+                string.find(nl,"respawn") or string.find(tl,"respawn") or
+                string.find(nl,"play") or string.find(tl,"play") or
+                string.find(nl,"start") or string.find(tl,"start") or
+                string.find(nl,"retry") or string.find(tl,"retry")) and
+                gui.Visible and gui.AbsoluteSize.X > 0 then
+                if firesignal then
+                    firesignal(gui.MouseButton1Click)
+                    firesignal(gui.Activated)
+                else
+                    gui:Activate()
+                end
+            end
+        end
+    end
+end
+
+-- Loops
+task.spawn(function()
+    while true do
+        if _G.AutoZEnabled then
+            simulateKeyPress(Enum.KeyCode.Z)
+            task.wait(delayZ)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if _G.AutoXEnabled or _G.AutoCEnabled or _G.AutoVEnabled or _G.AutoBEnabled then
+            if _G.AutoXEnabled then simulateKeyPress(Enum.KeyCode.X) end
+            if _G.AutoCEnabled then simulateKeyPress(Enum.KeyCode.C) end
+            if _G.AutoVEnabled then simulateKeyPress(Enum.KeyCode.V) end
+            if _G.AutoBEnabled then simulateKeyPress(Enum.KeyCode.B) end
+            task.wait(delayOther)
+        else
+            task.wait(0.1)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if _G.AutoSpawnEnabled then
+            local char = LocalPlayer.Character
+            local h = char and char:FindFirstChildOfClass("Humanoid")
+            if (h and h.Health <= 0) or not char or not char:FindFirstChild("HumanoidRootPart") then
+                pcall(ClickSpawnButton)
+                task.wait(0.2)
+            else
+                task.wait(0.5)
+            end
+        else
+            task.wait(0.5)
+        end
+    end
+end)
+
+task.spawn(function()
+    while true do
+        if _G.AutoTP_CaveDemon or _G.AutoTP_Thief or _G.AutoTP_Vokun then
+            pcall(function()
+                local char = LocalPlayer.Character
+                local myRoot = char and char:FindFirstChild("HumanoidRootPart")
+                if myRoot then
+                    if not CheckValidTarget(ActiveMonsterTarget) then
+                        ActiveMonsterTarget = nil
+                        ActiveMonsterType = nil
+                    end
+                    if not ActiveMonsterTarget then
+                        if _G.AutoTP_CaveDemon then
+                            local f = FindTargetFromWorkspace("Cave Demon")
+                            if f then ActiveMonsterTarget = f ActiveMonsterType = 1 end
+                        end
+                        if not ActiveMonsterTarget and _G.AutoTP_Thief then
+                            local f = FindTargetFromWorkspace("Thief")
+                            if f then ActiveMonsterTarget = f ActiveMonsterType = 2 end
+                        end
+                        if not ActiveMonsterTarget and _G.AutoTP_Vokun then
+                            local f = FindTargetFromWorkspace("Vokun")
+                            if f then ActiveMonsterTarget = f ActiveMonsterType = 3 end
+                        end
+                    end
+                    if ActiveMonsterTarget then
+                        local rootPart = ActiveMonsterTarget:FindFirstChild("HumanoidRootPart") or ActiveMonsterTarget.PrimaryPart
+                        if rootPart then
+                            local dir, dist = "Above", 5
+                            if ActiveMonsterType == 1 then
+                                dir = _G.DirOpt1 or "Above"
+                                dist = _G.DistOpt1 or 5
+                            elseif ActiveMonsterType == 2 then
+                                dir = _G.DirOpt2 or "Above"
+                                dist = _G.DistOpt2 or 5
+                            elseif ActiveMonsterType == 3 then
+                                dir = _G.DirOpt3 or "Above"
+                                dist = _G.DistOpt3 or 5
+                            end
+                            local offset
+                            if dir == "Above" then
+                                offset = CFrame.new(0, dist, 0)
+                            elseif dir == "Below" then
+                                offset = CFrame.new(0, -dist, 0)
+                            elseif dir == "Front" then
+                                offset = CFrame.new(0, 0, -dist)
+                            else
+                                offset = CFrame.new(0, 0, dist)
+                            end
+                            myRoot.CFrame = rootPart.CFrame * offset
+                        end
+                    end
+                end
+            end)
+            task.wait(0.08)
+        else
+            ActiveMonsterTarget = nil
+            ActiveMonsterType = nil
+            task.wait(0.5)
+        end
+    end
+end)
