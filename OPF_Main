@@ -51,7 +51,7 @@ local Window = Fluent:CreateWindow({
     TabWidth = 160,
     Size = UDim2.fromOffset(580, 460),
     Acrylic = true,
-    Theme = "Dark",
+    Theme = "Darker",
     MinimizeKey = Enum.KeyCode.LeftControl
 })
 
@@ -143,8 +143,7 @@ Tabs.Spawn:AddToggle("AutoSpawnEnabled", {
 -- TAB 3: AUTO TP (MONSTERS)
 -- ==========================================
 Tabs.TP:AddParagraph({
-    Title = "Auto Teleport to Monster",
-    Content = "TP ติดมอนสเตอร์อัตโนมัติ ล็อคคิวทีละตัวจนตาย\nเลือก Direction และ Distance สำหรับแต่ละ Option"
+    Title = "Auto Teleport to Monster"
 })
 
 -- OPT 1: Cave Demon
