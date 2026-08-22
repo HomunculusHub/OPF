@@ -1,9 +1,8 @@
--- Strict Cash-Only & Stock-Aware Potion Auto-Buyer (With Minimize Feature)
+-- Strict Cash-Only, Precise-Card & Affordability Check Auto-Buyer
 local Players = game:GetService("Players")
 local CoreGui = game:GetService("CoreGui")
 local localPlayer = Players.LocalPlayer
 
--- รายชื่อ Potion ที่ต้องการให้ซื้อ (true = ซื้อ, false = ไม่ซื้อ)
 local PotionList = {
     ["Gems Potion"] = true,
     ["Luck Potion"] = true,
@@ -20,11 +19,11 @@ local AutoBuyActive = true
 local CheckInterval = 0.3
 local isMinimized = false
 
--- ลบ UI เก่าออกหากมีการรันซ้ำ
+-- Clean up older UI
 local oldUI = CoreGui:FindFirstChild("StrictCashPotionBuyerUI") or (localPlayer.PlayerGui and localPlayer.PlayerGui:FindFirstChild("StrictCashPotionBuyerUI"))
 if oldUI then oldUI:Destroy() end
 
--- สร้าง UI
+-- Create UI
 local ScreenGui = Instance.new("ScreenGui")
 ScreenGui.Name = "StrictCashPotionBuyerUI"
 ScreenGui.ResetOnSpawn = false
@@ -44,19 +43,17 @@ Frame.Parent = ScreenGui
 local Corner = Instance.new("UICorner", Frame)
 Corner.CornerRadius = UDim.new(0, 8)
 
--- Header Bar สำหรับลากและย่อ
 local Title = Instance.new("TextLabel")
 Title.Size = UDim2.new(1, -40, 0, 34)
 Title.Position = UDim2.new(0, 10, 0, 0)
 Title.BackgroundTransparency = 1
-Title.Text = "💵 Auto Buy Potion"
+Title.Text = "💵 Cash Auto-Buyer"
 Title.TextColor3 = Color3.fromRGB(255, 255, 255)
 Title.Font = Enum.Font.GothamBold
 Title.TextSize = 13
 Title.TextXAlignment = Enum.TextXAlignment.Left
 Title.Parent = Frame
 
--- ปุ่มย่อ / ขยาย หน้าต่าง
 local MinBtn = Instance.new("TextButton")
 MinBtn.Size = UDim2.new(0, 24, 0, 24)
 MinBtn.Position = UDim2.new(1, -30, 0, 5)
@@ -68,14 +65,12 @@ MinBtn.TextSize = 14
 MinBtn.Parent = Frame
 Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 4)
 
--- Container สำหรับเนื้อหาข้างใน (ใช้ซ่อนตอนย่อหน้าต่าง)
 local ContentContainer = Instance.new("Frame")
 ContentContainer.Size = UDim2.new(1, 0, 1, -34)
 ContentContainer.Position = UDim2.new(0, 0, 0, 34)
 ContentContainer.BackgroundTransparency = 1
 ContentContainer.Parent = Frame
 
--- ระบบคลิกย่อ/ขยาย
 MinBtn.MouseButton1Click:Connect(function()
     isMinimized = not isMinimized
     if isMinimized then
@@ -89,7 +84,6 @@ MinBtn.MouseButton1Click:Connect(function()
     end
 end)
 
--- ปุ่มเปิด/ปิด ระบบหลัก
 local MasterBtn = Instance.new("TextButton")
 MasterBtn.Size = UDim2.new(1, -16, 0, 28)
 MasterBtn.Position = UDim2.new(0, 8, 0, 2)
@@ -107,7 +101,6 @@ MasterBtn.MouseButton1Click:Connect(function()
     MasterBtn.Text = AutoBuyActive and "Status: ACTIVE" or "Status: OFF"
 end)
 
--- รายการ Potion ที่เลื่อนได้
 local Scroll = Instance.new("ScrollingFrame")
 Scroll.Size = UDim2.new(1, -16, 1, -42)
 Scroll.Position = UDim2.new(0, 8, 0, 36)
@@ -140,7 +133,62 @@ for name, enabled in pairs(PotionList) do
     end)
 end
 
--- ระบบจำลองการกดคลิก
+-- Helper: Convert suffix numbers
+local SuffixMultipliers = {
+    k = 1e3, m = 1e6, b = 1e9, t = 1e12,
+    qa = 1e15, qi = 1e18, sx = 1e21, sp = 1e24, oc = 1e27, no = 1e30, dc = 1e33,
+}
+
+local function parseNumber(str)
+    if not str then return 0 end
+    local clean = str:gsub("[%$,%s]", ""):lower()
+    local num, suffix = clean:match("([%d%.]+)%s*([a-z]*)")
+    num = tonumber(num)
+    if not num then return 0 end
+    if suffix and suffix ~= "" and SuffixMultipliers[suffix] then
+        return num * SuffixMultipliers[suffix]
+    end
+    return num
+end
+
+-- Helper: Player Cash Balance
+local function getPlayerCash()
+    local leaderstats = localPlayer:FindFirstChild("leaderstats")
+    if leaderstats then
+        for _, item in ipairs(leaderstats:GetChildren()) do
+            local name = item.Name:lower()
+            if (name:find("cash") or name:find("money") or name == "$") and item:IsA("ValueBase") then
+                return tonumber(item.Value) or parseNumber(tostring(item.Value))
+            end
+        end
+    end
+    for attrName, val in pairs(localPlayer:GetAttributes()) do
+        local name = attrName:lower()
+        if name:find("cash") or name:find("money") then
+            return tonumber(val) or parseNumber(tostring(val))
+        end
+    end
+    local pGui = localPlayer:FindFirstChild("PlayerGui")
+    if pGui then
+        for _, gui in ipairs(pGui:GetChildren()) do
+            if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "StrictCashPotionBuyerUI" then
+                for _, label in ipairs(gui:GetDescendants()) do
+                    if label:IsA("TextLabel") and label.Visible then
+                        local text = label.Text
+                        if text:find("%$") and not text:find("left") and not text:find("duration") and not text:find("lvl") then
+                            local parsed = parseNumber(text)
+                            if parsed > 0 then
+                                return parsed
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+    return math.huge
+end
+
 local function triggerClick(btn)
     pcall(function()
         if firesignal then
@@ -151,69 +199,116 @@ local function triggerClick(btn)
     end)
 end
 
--- เช็คว่าไอเทมมี Stock หรือไม่
+-- Strictly checks card stock
 local function isCardInStock(card)
+    local foundStockText = false
     for _, desc in ipairs(card:GetDescendants()) do
         if desc:IsA("TextLabel") and desc.Visible then
             local text = desc.Text:lower()
             if text:find("no stock") or text:find("sold out") or text:find("x0 left") then
                 return false
             end
-        end
-    end
-    
-    for _, desc in ipairs(card:GetDescendants()) do
-        if desc:IsA("TextLabel") and desc.Visible then
-            local text = desc.Text:lower()
-            if text:find("left") or text:find("x") then
-                return true
+            if text:find("left") or text:find("x%d+") then
+                foundStockText = true
             end
         end
     end
-    return false
+    return foundStockText
 end
 
--- ตรวจสอบว่าเป็นปุ่มซื้อด้วยเงิน Cash ($) เท่านั้น (ห้ามกดปุ่ม Gem / Robux)
-local function isStrictCashButton(btn)
-    local buttonName = btn.Name:lower()
-    
-    if buttonName:find("gem") or buttonName:find("robux") or buttonName:find("diamond") then
-        return false
+-- Extracts Strict Cash details from a button
+local function getCashButtonData(btn)
+    if not (btn:IsA("TextButton") or btn:IsA("ImageButton")) or not btn.Visible then
+        return false, 0
+    end
+    local bName = btn.Name:lower()
+    if bName:find("gem") or bName:find("robux") or bName:find("diamond") then
+        return false, 0
     end
 
     local textBlob = ""
-    if btn:IsA("TextButton") then
-        textBlob = textBlob .. " " .. btn.Text:lower()
-    end
-    
+    if btn:IsA("TextButton") then textBlob = textBlob .. " " .. btn.Text:lower() end
     for _, desc in ipairs(btn:GetDescendants()) do
         if desc:IsA("TextLabel") then
             textBlob = textBlob .. " " .. desc.Text:lower()
         elseif desc:IsA("ImageLabel") then
             local img = desc.Image:lower()
             if img:find("gem") or img:find("robux") or img:find("diamond") then
-                return false
+                return false, 0
             end
         end
     end
 
     if textBlob:find("gem") or textBlob:find("diamond") or textBlob:find("💎") or textBlob:find("r%$") or textBlob:find("robux") then
-        return false
+        return false, 0
     end
 
     if textBlob:find("%$") then
-        return true
+        return true, parseNumber(textBlob)
     end
-
-    return false
+    return false, 0
 end
 
--- หาและกดปุ่ม Cash
-local function clickStrictCashButton(container)
-    for _, item in ipairs(container:GetDescendants()) do
-        if (item:IsA("TextButton") or item:IsA("ImageButton")) and item.Visible then
-            if isStrictCashButton(item) then
-                triggerClick(item)
+-- Finds the Cash button positioned directly beneath this card
+local function findMatchingCashButtonForCard(card)
+    -- Check inside the card itself first
+    for _, item in ipairs(card:GetDescendants()) do
+        local isCash, cost = getCashButtonData(item)
+        if isCash then return item, cost end
+    end
+
+    -- Match by vertical & horizontal position alignment in the shop grid
+    local parentGrid = card.Parent
+    if parentGrid then
+        local cardPos = card.AbsolutePosition
+        local cardSize = card.AbsoluteSize
+        local bestBtn = nil
+        local bestCost = 0
+        local closestDist = math.huge
+
+        for _, item in ipairs(parentGrid:GetDescendants()) do
+            local isCash, cost = getCashButtonData(item)
+            if isCash then
+                local btnPos = item.AbsolutePosition
+                -- Must be horizontally aligned with the card and situated right below it
+                local isHorizontallyAligned = math.abs(btnPos.X - cardPos.X) < 40
+                local isBelow = (btnPos.Y >= cardPos.Y) and ((btnPos.Y - (cardPos.Y + cardSize.Y)) < 80)
+
+                if isHorizontallyAligned and isBelow then
+                    local dist = btnPos.Y - cardPos.Y
+                    if dist < closestDist then
+                        closestDist = dist
+                        bestBtn = item
+                        bestCost = cost
+                    end
+                end
+            end
+        end
+        if bestBtn then
+            return bestBtn, bestCost
+        end
+    end
+    return nil, 0
+end
+
+-- Precise Card Title Matching
+local function matchesSelectedTitle(label)
+    local text = label.Text
+    -- Reject labels that are descriptions (e.g. "+1.25x Cash Earnings", "Duration: 5 Minutes")
+    if text:find("Earnings") or text:find("Duration") or text:find("Left") or text:find("STOCK") or text:find("%$") then
+        return false
+    end
+
+    -- Must contain Level/Lvl keyword indicating it is the actual card header
+    local isTitle = text:find("Lvl") or text:find("Level") or text:find("Potion")
+    if not isTitle then return false end
+
+    for potionKey, enabled in pairs(PotionList) do
+        if enabled then
+            local cleanKey = potionKey:lower():gsub("%s*potion", "")
+            local cleanLabel = text:lower()
+            -- Ensures "Gems" only matches Gems Potion and not Cash Potion
+            if cleanLabel:find(cleanKey, 1, true) and cleanLabel:find("potion", 1, true) then
                 return true
             end
         end
@@ -221,24 +316,23 @@ local function clickStrictCashButton(container)
     return false
 end
 
--- ตรวจสอบร้านค้า
+-- Main scanning loop
 local function sweepStore()
     local pGui = localPlayer:FindFirstChild("PlayerGui")
     if not pGui then return end
+
+    local currentCash = getPlayerCash()
 
     for _, gui in ipairs(pGui:GetChildren()) do
         if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "StrictCashPotionBuyerUI" then
             for _, label in ipairs(gui:GetDescendants()) do
                 if label:IsA("TextLabel") and label.Visible and label.Text ~= "" then
-                    local labelText = label.Text:lower()
-                    
-                    for potionKey, enabled in pairs(PotionList) do
-                        if enabled and labelText:find(potionKey:lower(), 1, true) then
-                            local card = label.Parent
-                            if card and isCardInStock(card) then
-                                if not clickStrictCashButton(card) and card.Parent then
-                                    clickStrictCashButton(card.Parent)
-                                end
+                    if matchesSelectedTitle(label) then
+                        local card = label.Parent
+                        if card and isCardInStock(card) then
+                            local btn, cost = findMatchingCashButtonForCard(card)
+                            if btn and currentCash >= cost then
+                                triggerClick(btn)
                             end
                         end
                     end
@@ -248,7 +342,6 @@ local function sweepStore()
     end
 end
 
--- Loop การทำงาน
 task.spawn(function()
     while task.wait(CheckInterval) do
         if AutoBuyActive then
