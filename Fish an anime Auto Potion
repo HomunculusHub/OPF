@@ -1,0 +1,258 @@
+-- Strict Cash-Only & Stock-Aware Potion Auto-Buyer (With Minimize Feature)
+local Players = game:GetService("Players")
+local CoreGui = game:GetService("CoreGui")
+local localPlayer = Players.LocalPlayer
+
+-- รายชื่อ Potion ที่ต้องการให้ซื้อ (true = ซื้อ, false = ไม่ซื้อ)
+local PotionList = {
+    ["Gems Potion"] = true,
+    ["Luck Potion"] = true,
+    ["Mutation Potion"] = true,
+    ["Fast Catch Potion"] = true,
+    ["Cooldown Potion"] = false,
+    ["Cash Potion"] = false,
+    ["Cosmic"] = true,
+    ["Secret"] = true,
+    ["Fortune"] = true,
+}
+
+local AutoBuyActive = true
+local CheckInterval = 0.3
+local isMinimized = false
+
+-- ลบ UI เก่าออกหากมีการรันซ้ำ
+local oldUI = CoreGui:FindFirstChild("StrictCashPotionBuyerUI") or (localPlayer.PlayerGui and localPlayer.PlayerGui:FindFirstChild("StrictCashPotionBuyerUI"))
+if oldUI then oldUI:Destroy() end
+
+-- สร้าง UI
+local ScreenGui = Instance.new("ScreenGui")
+ScreenGui.Name = "StrictCashPotionBuyerUI"
+ScreenGui.ResetOnSpawn = false
+pcall(function() ScreenGui.Parent = CoreGui end)
+if not ScreenGui.Parent then ScreenGui.Parent = localPlayer:WaitForChild("PlayerGui") end
+
+local Frame = Instance.new("Frame")
+Frame.Size = UDim2.new(0, 230, 0, 340)
+Frame.Position = UDim2.new(0.02, 0, 0.28, 0)
+Frame.BackgroundColor3 = Color3.fromRGB(22, 22, 26)
+Frame.BorderSizePixel = 0
+Frame.Active = true
+Frame.Draggable = true
+Frame.ClipsDescendants = true
+Frame.Parent = ScreenGui
+
+local Corner = Instance.new("UICorner", Frame)
+Corner.CornerRadius = UDim.new(0, 8)
+
+-- Header Bar สำหรับลากและย่อ
+local Title = Instance.new("TextLabel")
+Title.Size = UDim2.new(1, -40, 0, 34)
+Title.Position = UDim2.new(0, 10, 0, 0)
+Title.BackgroundTransparency = 1
+Title.Text = "💵 Auto Buy Potion"
+Title.TextColor3 = Color3.fromRGB(255, 255, 255)
+Title.Font = Enum.Font.GothamBold
+Title.TextSize = 13
+Title.TextXAlignment = Enum.TextXAlignment.Left
+Title.Parent = Frame
+
+-- ปุ่มย่อ / ขยาย หน้าต่าง
+local MinBtn = Instance.new("TextButton")
+MinBtn.Size = UDim2.new(0, 24, 0, 24)
+MinBtn.Position = UDim2.new(1, -30, 0, 5)
+MinBtn.BackgroundColor3 = Color3.fromRGB(40, 40, 48)
+MinBtn.Text = "-"
+MinBtn.TextColor3 = Color3.fromRGB(200, 200, 200)
+MinBtn.Font = Enum.Font.GothamBold
+MinBtn.TextSize = 14
+MinBtn.Parent = Frame
+Instance.new("UICorner", MinBtn).CornerRadius = UDim.new(0, 4)
+
+-- Container สำหรับเนื้อหาข้างใน (ใช้ซ่อนตอนย่อหน้าต่าง)
+local ContentContainer = Instance.new("Frame")
+ContentContainer.Size = UDim2.new(1, 0, 1, -34)
+ContentContainer.Position = UDim2.new(0, 0, 0, 34)
+ContentContainer.BackgroundTransparency = 1
+ContentContainer.Parent = Frame
+
+-- ระบบคลิกย่อ/ขยาย
+MinBtn.MouseButton1Click:Connect(function()
+    isMinimized = not isMinimized
+    if isMinimized then
+        ContentContainer.Visible = false
+        Frame.Size = UDim2.new(0, 230, 0, 34)
+        MinBtn.Text = "+"
+    else
+        Frame.Size = UDim2.new(0, 230, 0, 340)
+        ContentContainer.Visible = true
+        MinBtn.Text = "-"
+    end
+end)
+
+-- ปุ่มเปิด/ปิด ระบบหลัก
+local MasterBtn = Instance.new("TextButton")
+MasterBtn.Size = UDim2.new(1, -16, 0, 28)
+MasterBtn.Position = UDim2.new(0, 8, 0, 2)
+MasterBtn.BackgroundColor3 = Color3.fromRGB(45, 160, 80)
+MasterBtn.Text = "Status: ACTIVE"
+MasterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+MasterBtn.Font = Enum.Font.GothamBold
+MasterBtn.TextSize = 12
+MasterBtn.Parent = ContentContainer
+Instance.new("UICorner", MasterBtn).CornerRadius = UDim.new(0, 6)
+
+MasterBtn.MouseButton1Click:Connect(function()
+    AutoBuyActive = not AutoBuyActive
+    MasterBtn.BackgroundColor3 = AutoBuyActive and Color3.fromRGB(45, 160, 80) or Color3.fromRGB(180, 45, 45)
+    MasterBtn.Text = AutoBuyActive and "Status: ACTIVE" or "Status: OFF"
+end)
+
+-- รายการ Potion ที่เลื่อนได้
+local Scroll = Instance.new("ScrollingFrame")
+Scroll.Size = UDim2.new(1, -16, 1, -42)
+Scroll.Position = UDim2.new(0, 8, 0, 36)
+Scroll.BackgroundTransparency = 1
+Scroll.ScrollBarThickness = 3
+Scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+Scroll.Parent = ContentContainer
+
+local Layout = Instance.new("UIListLayout", Scroll)
+Layout.Padding = UDim.new(0, 4)
+
+for name, enabled in pairs(PotionList) do
+    local btn = Instance.new("TextButton")
+    btn.Size = UDim2.new(1, -6, 0, 24)
+    btn.BackgroundColor3 = enabled and Color3.fromRGB(35, 60, 45) or Color3.fromRGB(32, 32, 36)
+    btn.Text = (enabled and " [✓] " or " [ ] ") .. name
+    btn.TextColor3 = enabled and Color3.fromRGB(90, 255, 130) or Color3.fromRGB(160, 160, 160)
+    btn.Font = Enum.Font.GothamMedium
+    btn.TextSize = 11
+    btn.TextXAlignment = Enum.TextXAlignment.Left
+    btn.Parent = Scroll
+    Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 4)
+
+    btn.MouseButton1Click:Connect(function()
+        PotionList[name] = not PotionList[name]
+        local state = PotionList[name]
+        btn.Text = (state and " [✓] " or " [ ] ") .. name
+        btn.TextColor3 = state and Color3.fromRGB(90, 255, 130) or Color3.fromRGB(160, 160, 160)
+        btn.BackgroundColor3 = state and Color3.fromRGB(35, 60, 45) or Color3.fromRGB(32, 32, 36)
+    end)
+end
+
+-- ระบบจำลองการกดคลิก
+local function triggerClick(btn)
+    pcall(function()
+        if firesignal then
+            firesignal(btn.MouseButton1Click)
+            firesignal(btn.MouseButton1Down)
+            firesignal(btn.Activated)
+        end
+    end)
+end
+
+-- เช็คว่าไอเทมมี Stock หรือไม่
+local function isCardInStock(card)
+    for _, desc in ipairs(card:GetDescendants()) do
+        if desc:IsA("TextLabel") and desc.Visible then
+            local text = desc.Text:lower()
+            if text:find("no stock") or text:find("sold out") or text:find("x0 left") then
+                return false
+            end
+        end
+    end
+    
+    for _, desc in ipairs(card:GetDescendants()) do
+        if desc:IsA("TextLabel") and desc.Visible then
+            local text = desc.Text:lower()
+            if text:find("left") or text:find("x") then
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ตรวจสอบว่าเป็นปุ่มซื้อด้วยเงิน Cash ($) เท่านั้น (ห้ามกดปุ่ม Gem / Robux)
+local function isStrictCashButton(btn)
+    local buttonName = btn.Name:lower()
+    
+    if buttonName:find("gem") or buttonName:find("robux") or buttonName:find("diamond") then
+        return false
+    end
+
+    local textBlob = ""
+    if btn:IsA("TextButton") then
+        textBlob = textBlob .. " " .. btn.Text:lower()
+    end
+    
+    for _, desc in ipairs(btn:GetDescendants()) do
+        if desc:IsA("TextLabel") then
+            textBlob = textBlob .. " " .. desc.Text:lower()
+        elseif desc:IsA("ImageLabel") then
+            local img = desc.Image:lower()
+            if img:find("gem") or img:find("robux") or img:find("diamond") then
+                return false
+            end
+        end
+    end
+
+    if textBlob:find("gem") or textBlob:find("diamond") or textBlob:find("💎") or textBlob:find("r%$") or textBlob:find("robux") then
+        return false
+    end
+
+    if textBlob:find("%$") then
+        return true
+    end
+
+    return false
+end
+
+-- หาและกดปุ่ม Cash
+local function clickStrictCashButton(container)
+    for _, item in ipairs(container:GetDescendants()) do
+        if (item:IsA("TextButton") or item:IsA("ImageButton")) and item.Visible then
+            if isStrictCashButton(item) then
+                triggerClick(item)
+                return true
+            end
+        end
+    end
+    return false
+end
+
+-- ตรวจสอบร้านค้า
+local function sweepStore()
+    local pGui = localPlayer:FindFirstChild("PlayerGui")
+    if not pGui then return end
+
+    for _, gui in ipairs(pGui:GetChildren()) do
+        if gui:IsA("ScreenGui") and gui.Enabled and gui.Name ~= "StrictCashPotionBuyerUI" then
+            for _, label in ipairs(gui:GetDescendants()) do
+                if label:IsA("TextLabel") and label.Visible and label.Text ~= "" then
+                    local labelText = label.Text:lower()
+                    
+                    for potionKey, enabled in pairs(PotionList) do
+                        if enabled and labelText:find(potionKey:lower(), 1, true) then
+                            local card = label.Parent
+                            if card and isCardInStock(card) then
+                                if not clickStrictCashButton(card) and card.Parent then
+                                    clickStrictCashButton(card.Parent)
+                                end
+                            end
+                        end
+                    end
+                end
+            end
+        end
+    end
+end
+
+-- Loop การทำงาน
+task.spawn(function()
+    while task.wait(CheckInterval) do
+        if AutoBuyActive then
+            pcall(sweepStore)
+        end
+    end
+end)
